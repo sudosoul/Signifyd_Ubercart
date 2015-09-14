@@ -1,0 +1,12 @@
+name = Signifyd
+description = Provides settings and Signifyd API integration
+package = Signifyd
+core = 7.x
+configure = admin/config/services/signifyd
+
+; Information added by Drupal.org packaging script on 2015-03-20
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "signifyd"
+datestamp = "1426881084"
+
