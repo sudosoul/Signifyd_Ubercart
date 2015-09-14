@@ -1,0 +1,213 @@
+<?php
+/**
+ * UberCart Signifyd Module.
+ * Provides UberCart integration with Signifyd on payment success.
+ *
+ * All Drupal code is Copyright 2001 - 2015 by the original authors.
+ * Copyright (C) 2015  Aspiring Web LLC <matthew@aspiringweb.com>
+ * Copyright (C) 2015  Robert Mullins		<mullinsr@live.com>
+ *
+ * This file is part of the Ubercart/Signifyd module.
+ * 
+ * This Ubercart/Signifyd module is free software; you can redistribute it 
+ * and/or modify it under the terms of the GNU General Public License as 
+ * published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *
+ */
+
+/**
+ * Implements hook_uc_order().
+ */
+function uc_signifyd_uc_order($op, $order, $arg2) {
+  if ($op == 'update' && $arg2 == 'payment_received') {
+    $data = uc_signifyd_parse_data($order);
+    SignifydApi::submit_case($data);
+  }
+}
+
+/**
+ * Creates a data array for signifyd from an order entity.
+ * @param $order
+ * @return array
+ */
+function uc_signifyd_parse_data($order) {
+  $date = new DateTime('@' . $order->modified);
+  $iso  = $date->format(DateTime::ISO8601);
+  $name = $order->delivery_first_name . ' ' . $order->delivery_last_name;
+  
+  /* These need to be defined in order for Signifyd to work correctly */
+  $billing_country   = getCountryCode($order->billing_country);
+  $delivery_country  = getCountryCode($order->delivery_country);
+
+  $phone = isset($order->delivery_phone) ? $order->delivery_phone : $order->billing_phone;
+
+  $data = array(
+    'purchase' => array(
+      'browserIpAddress' => isset($_SERVER['HTTP_X_FORWARDED_FOR']) ? $_SERVER['HTTP_X_FORWARDED_FOR'] : $order->host,
+      'orderId'          => $order->order_id,
+      'createdAt'        => $iso,
+      'paymentGateway'   => $order->payment_method,
+      'currency'         => $order->currency,
+      'orderChannel'     => 'WEB',
+      'totalPrice'       => $order->order_total,
+      'products'         => uc_signifyd_product_data($order),
+      'shipments'        => uc_signifyd_shipping_data($order),
+    ),
+    'recipient' => array(
+      'fullName'          => $name,
+      'confirmationEmail' => $order->primary_email,
+      'confirmationPhone' => $phone,
+      'organization'      => $order->billing_company,
+      'deliveryAddress' => array(
+        'streetAddress' => $order->delivery_street1,
+        'unit'          => $order->delivery_street2,
+        'city'          => $order->delivery_city,
+        'postalCode'    => $order->delivery_postal_code,
+        'provinceCode'  => getProvinceCode($order->delivery_zone),
+        'countryCode'	 => $delivery_country 
+      ),
+    ),
+    'card' => array(
+      'cardHolderName' => $order->billing_first_name . ' ' . $order->billing_last_name,
+      'expiryMonth'    => $order->payment_details['cc_exp_month'],
+      'expiryYear'     => $order->payment_details['cc_exp_year'],
+      // 'bin' -- Get from Paypal API
+      // 'last4' need live data to see if we have access to this from VirtualMerchant
+      // 'hash' unique id for this card, check live data
+
+      'billingAddress' => array(
+        'streetAddress' => $order->billing_street1,
+        'unit'          => $order->billing_street2,
+        'city'          => $order->billing_city,
+        'postalCode'    => $order->billing_postal_code,
+        'provinceCode'  => getProvinceCode($order->billing_zone),
+        'countryCode'	 => $billing_country      
+      ),
+    ),
+
+    'userAccount' => uc_signifyd_account_data($order),
+    // seller isn't need as the site represents the seller, if 3rd party sales are possible this is needed
+  );
+
+  return $data;
+}
+
+/**
+ * Gets the abbreviated state/province code from UC database
+ * @param int $id - The UC billing OR delivery zone id
+ * @return string - Abbreviated state/province code 
+ */
+function getProvinceCode($id) {
+	$provinceCode = db_query("SELECT zone_code FROM {uc_zones} WHERE zone_id = :id LIMIT 1", array(":id" => $id))->fetchField();
+	
+	return $provinceCode;
+}
+
+/**
+ * Gets a 2-digit country code from a UC defined country_id.
+ * @param  string $country - The UC Billing OR Delivery Country ID.
+ * @return string 				  - ISO-3166 2-digit country code. 
+ */
+function getCountryCode($country) {
+	$result = db_query("SELECT country_iso_code_2 FROM {uc_countries} WHERE country_id = :id LIMIT 1", array(':id' => $country))->fetchField();
+	
+	return $result;
+}
+
+
+/**
+ * Gets account specific data and returns the userAccount section data.
+ * @param $order|object  - The UC order object
+ * @return mixed         - Arary of user data
+ */
+function uc_signifyd_account_data($order) {
+  $user = user_load($order->uid);
+  if($user->uid > 0) {
+    // createdDate
+    $created = new DateTime('@'.$user->created);
+    $created = $created->format(DateTime::ISO8601);
+
+    // aggregateOrderCount - The total count of orders placed by this account since it was created, including the current order.
+    $result = db_query("SELECT COUNT(*) FROM {uc_orders} WHERE order_status = 'completed' AND uid = :uid", array(':uid' => $user->uid));
+    $count  = $result->fetchField();
+    $count  = $count++; // current order
+  
+    // aggregateOrderDollars - The total amount spent by this account since it was created, including the current order.
+    $result = db_query("SELECT SUM(order_total) FROM {uc_orders} WHERE order_status = 'completed' AND uid = :uid", array(':uid' => $user->uid));
+    $sum    = $result->fetchField();
+    $sum    = is_null($sum) ? 0 : $sum;
+    $sum   += $order->order_total; // current order
+  
+    // lastOrderId
+    $result = db_query("SELECT order_id FROM {uc_orders} WHERE order_status = 'completed' AND uid = :uid ORDER BY order_id ", array(':uid' => $user->uid));
+    $last_order  = $result->fetchField();
+  }
+  
+  $data = array(
+    'emailAddress'          => $user->mail,
+    'username'              => $user->name,
+    'createdDate'           => $created,
+    'accountNumber'         => $user->uid,
+    'aggregateOrderCount'   => $count,
+    'aggregateOrderDollars' => $sum,
+    'lastOrderId'           => (isset($last_order->order_id)) ? $last_order->order_id : null,
+  );
+
+  return $data;
+}
+
+/**
+ * Gets order product data
+ * @param $order|object  - The UC order object
+ * @return mixed         - Array of Order products
+ */
+function uc_signifyd_product_data($order) {
+  $all_products = array();
+
+  foreach ($order->products as $product) {
+    $data = array(
+      'itemId'       => $product->nid,
+      'itemName'     => $product->title,
+      'itemQuantity' => (int)$product->qty,
+      'itemPrice'    => $product->price,
+      // 'itemWeight' needs to be in grams, doesn't seem to be available
+    );
+
+    $all_products[] = $data;
+  }
+
+  return $all_products;
+}
+
+/**
+ * Gets order shipping data
+ * @param $order|object - The Ubercart Order Object
+ * @return mixed        - Array of shipment data
+ */
+function uc_signifyd_shipping_data($order) {
+  $shipment = array();
+
+  foreach ($order->line_items as $item) {
+    if ('shipping' == $item['type']) {
+      $shipment = array(
+        'shippingMethod' => $item['title'],
+        'shippingPrice'  => $item['amount'],
+      );
+
+      break;
+    }
+  }
+
+  return $shipment;
+}
+
