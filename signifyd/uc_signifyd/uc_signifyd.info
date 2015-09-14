@@ -1,0 +1,13 @@
+name = UC Signifyd
+description = Provides UberCart integration for Signifyd
+dependencies[] = signifyd
+dependencies[] = uc_order
+package = Signifyd
+core = 7.x
+
+; Information added by Drupal.org packaging script on 2015-03-20
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "signifyd"
+datestamp = "1426881084"
+
