@@ -1,0 +1,57 @@
+<?php
+/**
+ * Signifyd Module
+ *
+ * Provides API object and admin settings
+ */
+
+/**
+ * Implements hook_menu()
+ */
+function signifyd_menu() {
+  $items = array();
+
+  $items['admin/config/services/signifyd'] = array(
+    'title'            => 'Signifyd',
+    'description'      => 'Set API key for Signifyd module.',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('signifyd_admin_settings'),
+    'access arguments' => array('administer site configuration'),
+    'type'             => MENU_NORMAL_ITEM,
+    'file'             => 'signifyd.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Signifyd API Object
+ *
+ * Provides static methods to be used by UC/Commerce sub modules
+ *
+ * @see https://www.signifyd.com/docs/api
+ */
+class SignifydApi {
+
+  /**
+   * Submit a new case to Signifyd.
+   */
+  static function submit_case($data) {
+    $api_key  = variable_get('signifyd_api_key', '');
+    $api_base = variable_get('signifyd_api_url', '');
+    $api_url  = $api_base . '/cases';
+
+    $resp = drupal_http_request($api_url, array(
+       'method' => 'POST',
+       'data' => json_encode($data),
+       'headers' => array(
+          'Content-Type' => 'application/json',
+          'Authorization' => 'Basic ' . base64_encode($api_key),
+       ),
+     ));
+
+    watchdog('signifyd', 'API Response: <pre>'.print_r($resp, true).'</pre>');
+
+    return $resp;
+  }
+}
