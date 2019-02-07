@@ -84,27 +84,18 @@ class SignifydApi {
 		$api_base = variable_get('signifyd_api_url', '');
 		$api_url  = $api_base . '/cases/'.$id.'/guarantee';
 		
-		$ch = curl_init();
-
-		curl_setopt($ch, CURLOPT_URL, $api_url);
-		curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
-		curl_setopt($ch, CURLOPT_HEADER, FALSE);
+		$resp = drupal_http_request($api_url, 
+			array(
+				'headers' => array(
+					'Content-Type' => 'application/json',
+					'Authorization' => 'Basic ' . base64_encode($api_key),
+				),
+				'method' => 'PUT', 
+				'data' => '{ "guaranteeDisposition": "CANCELED" }',
+			)
+		);
 		
-		curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
-		
-		curl_setopt($ch, CURLOPT_POSTFIELDS, "{
-		  \"guaranteeDisposition\": \"CANCELED\"
-		}");
-		
-		curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-		  "Content-Type: application/json",
-		  "Authorization: Basic ".base64_encode($api_key)
-		));
-		
-		$resp = curl_exec($ch);
-		curl_close($ch);
-		
-		watchdog('signifyd', 'API PUT Response: <pre>'.print_r($resp, true).'</pre>');
+		//watchdog('signifyd', 'API PUT Response: <pre>'.print_r($resp, true).'</pre>');
 		
 		return $resp;
 	}
