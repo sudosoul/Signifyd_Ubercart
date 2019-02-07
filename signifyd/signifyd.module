@@ -77,9 +77,9 @@ class SignifydApi {
 	}
 	
 	/**
-	* Get a guarentee canceled and refunded
+	* This function cancels any guarenteed case which in turn refunds the Signifyd fee for the cases guarentee
 	*/
-	static function cancel_guarentee($id) {
+	static function cancel_case_guarantee($id) {
 		$api_key  = variable_get('signifyd_api_key', '');
 		$api_base = variable_get('signifyd_api_url', '');
 		$api_url  = $api_base . '/cases/'.$id.'/guarantee';
