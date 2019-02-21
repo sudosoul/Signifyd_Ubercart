@@ -54,4 +54,49 @@ class SignifydApi {
 
     return $resp;
   }
+  
+  /**
+	* Get a case details from Signifyd.
+	*/
+	static function get_case($id) {
+		$api_key  = variable_get('signifyd_api_key', '');
+		$api_base = variable_get('signifyd_api_url', '');
+		$api_url  = $api_base . '/cases/'.$id;
+		
+		$resp = drupal_http_request($api_url, array(
+			'method' => 'GET',
+			'headers' => array(
+				'Content-Type' => 'application/json',
+				'Authorization' => 'Basic ' . base64_encode($api_key),
+			),
+		 ));
+		
+		watchdog('signifyd', 'API Get Response: <pre>'.print_r($resp, true).'</pre>');
+		
+		return $resp;
+	}
+	
+	/**
+	* This function cancels any guarenteed case which in turn refunds the Signifyd fee for the cases guarentee
+	*/
+	static function cancel_case_guarantee($id) {
+		$api_key  = variable_get('signifyd_api_key', '');
+		$api_base = variable_get('signifyd_api_url', '');
+		$api_url  = $api_base . '/cases/'.$id.'/guarantee';
+		
+		$resp = drupal_http_request($api_url, 
+			array(
+				'headers' => array(
+					'Content-Type' => 'application/json',
+					'Authorization' => 'Basic ' . base64_encode($api_key),
+				),
+				'method' => 'PUT', 
+				'data' => '{ "guaranteeDisposition": "CANCELED" }',
+			)
+		);
+		
+		//watchdog('signifyd', 'API PUT Response: <pre>'.print_r($resp, true).'</pre>');
+		
+		return $resp;
+	}
 }
